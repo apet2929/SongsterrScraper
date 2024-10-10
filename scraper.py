@@ -1,10 +1,17 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from PIL import Image  # install by > python3 -m pip install --upgrade Pillow  # ref. https://pillow.readthedocs.io/en/latest/installation.html#basic-installation
+import jinja2
+import pdfkit
 import os
 import time
 
-def scrape_song(song_url):
+def scrape_song(song_url, song_name):
+    if not os.path.exists("./images"):
+        os.mkdir("./images")
+    song_path = os.path.join("images", song_name)
+    if not os.path.exists(song_path):
+        os.mkdir(song_path)
+
     driver = webdriver.Chrome()
     driver.get(song_url)
     driver.implicitly_wait(2)
@@ -13,48 +20,60 @@ def scrape_song(song_url):
     # wait until elements loaded
     driver.find_element(By.ID, "showroom")
     
-
     driver.execute_script("document.getElementById('showroom').style.display = 'none';")
     if driver.find_element(By.ID, "tablist"):
         driver.execute_script("document.getElementById('tablist').style.display = 'none';")
 
     for i, elem in enumerate(tabs.find_elements(By.TAG_NAME, "svg")):
         loc = elem.location
-        driver.execute_script(f"window.scrollTo({loc["x"]}, {loc["y"]});")
-        elem.screenshot(f"./images/foo-{str(i).zfill(4)}.png")
-    
+        driver.execute_script(f"window.scrollTo({loc['x']}, {loc['y']});")
+        elem.screenshot(f"{song_path}/img-{str(i).zfill(4)}.png")
+
     driver.quit()
 
+def pairwise(t):
+    it = iter(t)
+    return zip(it,it)
+
+def create_html_doc(images):
+    image_pairs = pairwise(images)
+    loader=jinja2.FileSystemLoader(".")
+    environment = jinja2.Environment(loader=loader)
+    template = environment.get_template("out_template.j2")
+    rendered = template.render(image_pairs=image_pairs)
+    return rendered
+
 def combine_images(song_name):
-    image_paths = [
-        os.path.join("images", f) for f in os.listdir("images")
-    ]
-    images = [
-        Image.open(f) for f in image_paths
-    ]
+    if not os.path.exists("./songs"):
+        os.mkdir("./songs")
 
     pdf_path = f"songs/{song_name}.pdf"
-        
-    images[0].save(
-        pdf_path, "PDF" ,resolution=100.0, save_all=True, append_images=images[1:]
-    )
+    images = [
+        os.path.join("images", song_name, f) for f in os.listdir(os.path.join("images", song_name))
+    ]
 
-    for img in image_paths:
-        os.remove(img)
+    os.remove(images[1])
+    images.remove(images[1]) # two dots thingy
+
+    html_path = pdf_path.replace(".pdf", ".html")
+    try:
+        content = create_html_doc(images)
+        print("Content written to html file at: ", html_path)
+        with open(html_path, "w") as f:
+            f.write(content)
+    except:
+        pass
 
 def main():
     global songs
-    for song_url in songs:
-        scrape_song(song_url[0])
-        combine_images(song_url[1])
+    for song in songs:
+        scrape_song(song[0], song[1])
+        combine_images(song[1])
 
 songs = [
-    # ("https://www.songsterr.com/a/wsa/nirvana-blew-drum-tab-s10772", "nirvana-blew")
-    ("https://www.songsterr.com/a/wsa/nirvana-about-a-girl-drum-tab-s29", "nirvana-about_a_girl"),
-    ("https://www.songsterr.com/a/wsa/nirvana-smells-like-teen-spirit-drum-tab-s269", "nirvana-smells_like_teen_spirit"),
-    ("https://www.songsterr.com/a/wsa/nirvana-in-bloom-drum-tab-s295", "nirvana-in_bloom"),
-    ("https://www.songsterr.com/a/wsa/radiohead-creep-drum-tab-s97", "radiohead-creep"),
-    ("https://www.songsterr.com/a/wsa/deftones-my-own-summer-shove-it-drum-tab-s595","deftones-my_own_summer")
+    ("https://www.songsterr.com/a/wsa/black-keys-heavy-soul-drum-tab-s668136", "black_keys-heavy_soul"),
+    ("https://www.songsterr.com/a/wsa/masayoshi-takanaka-oh-tengo-suerte-drum-tab-s580675", "takanaka-oh_tengo_suerte"),
+    ("https://www.songsterr.com/a/wsa/nirvana-rape-me-drum-tab-s39", "nirvana-rape_me")
 ]
 
 if __name__ == "__main__":
